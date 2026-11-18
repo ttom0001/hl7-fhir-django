@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pruebas:
+    name: Pruebas y mensaje HL7 de punta a punta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Las migraciones coinciden con los modelos
+        run: python manage.py makemigrations --check --dry-run
+      - name: Pruebas
+        run: python manage.py test -v 2
+      - name: Levantar el servidor y mandar un ADT^A04 con scripts/enviar_hl7.sh
+        run: |
+          python manage.py migrate --noinput
+          python manage.py runserver 127.0.0.1:8000 > server.log 2>&1 &
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8000/fhir/Patient > /dev/null && break; sleep 1; done
+          bash scripts/enviar_hl7.sh || { cat server.log; exit 1; }
